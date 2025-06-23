@@ -5,7 +5,7 @@ num_envs: 4096
 auto_load_latest: false
 checkpoint: null
 project_name: MotionTracking
-experiment_name: PEmain_ours_Fight_s1
+experiment_name: Horse_stance_pose
 base_dir: logs
 timestamp: ${now:%Y%m%d_%H%M%S}
 experiment_dir: ${base_dir}/${project_name}/${timestamp}-${experiment_name}-${log_task_name}-${robot.asset.robot_type}
