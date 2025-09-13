@@ -1,5 +1,120 @@
 from easydict import EasyDict
 
+def t1_mapping():
+    extend_config = []
+
+    base_link = "Trunk"
+    joint_matches = [
+        ["Waist", "Pelvis"],
+        ["Hip_Yaw_Left", "L_Hip"],
+        ["Shank_Left", "L_Knee"],
+        ["Ankle_Cross_Left", "L_Ankle"],
+        ["Hip_Yaw_Right", "R_Hip"],
+        ["Shank_Right", "R_Knee"],
+        ["Ankle_Cross_Right", "R_Ankle"],
+        ["AL2", "L_Shoulder"],
+        ["left_hand_link", "L_Elbow"],
+        ["left_hand_link_2", "L_Hand"],
+        ["AR2", "R_Shoulder"],
+        ["right_hand_link", "R_Elbow"],
+        ["right_hand_link_2", "R_Hand"],
+        ["head", "Head"],
+    ]
+    # joint_matches = [
+    #     ["Waist", "Pelvis"],
+    #     ["Hip_Yaw_Left", "L_Hip"],
+    #     ["Shank_Left", "L_Knee"],
+    #     ["Ankle_Cross_Left", "L_Ankle"],
+    #     ["Hip_Yaw_Right", "R_Hip"],
+    #     ["Shank_Right", "R_Knee"],
+    #     ["Ankle_Cross_Right", "R_Ankle"],
+    #     ["AL1", "L_Shoulder"],
+    #     ["AL3", "L_Elbow"],
+    #     ["left_hand_link", "L_Hand"],
+    #     ["AR1", "R_Shoulder"],
+    #     ["AR3", "R_Elbow"],
+    #     ["right_hand_link", "R_Hand"],
+    #     ["H2", "Head"],
+    # ]
+
+    smpl_pose_modifier = []
+
+    asset_file = "../description/robots/t1/T1_Serial.mjcf"
+
+    return EasyDict(
+        extend_config=extend_config,
+        base_link=base_link,
+        joint_matches=joint_matches,
+        smpl_pose_modifier=smpl_pose_modifier,
+        asset_file=asset_file,
+    )
+
+
+def t1_mapping_with_extend_config():
+    extend_config = [
+        {
+            "joint_name": "left_hand_link_2",
+            "parent_name": "left_hand_link",
+            "pos": [0.0, 0.20, 0.0],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+        {
+            "joint_name": "right_hand_link_2",
+            "parent_name": "right_hand_link",
+            "pos": [0.0, -0.20, 0.0],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+        {
+            "joint_name": "head",
+            "parent_name": "H2",
+            "pos": [0.0, 0.0, 0.15],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+        {
+            "joint_name": "left_toe_link",
+            "parent_name": "left_foot_link",
+            "pos": [0.08, 0.0, -0.01],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+        {
+            "joint_name": "right_toe_link",
+            "parent_name": "right_foot_link",
+            "pos": [0.08, 0.0, -0.01],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+    ]
+
+    base_link = "Trunk"
+    joint_matches = [
+        ["Waist", "Pelvis"],
+        ["Hip_Yaw_Left", "L_Hip"],
+        ["Shank_Left", "L_Knee"],
+        ["Ankle_Cross_Left", "L_Ankle"],
+        ["Hip_Yaw_Right", "R_Hip"],
+        ["Shank_Right", "R_Knee"],
+        ["Ankle_Cross_Right", "R_Ankle"],
+        ["AL2", "L_Shoulder"],
+        ["left_hand_link", "L_Elbow"],
+        ["left_hand_link_2", "L_Hand"],
+        ["AR2", "R_Shoulder"],
+        ["right_hand_link", "R_Elbow"],
+        ["right_hand_link_2", "R_Hand"],
+        ["head", "Head"],
+    ]
+
+    smpl_pose_modifier = []
+
+    asset_file = "../description/robots/t1/T1_Serial.mjcf"
+
+    return EasyDict(
+        extend_config=extend_config,
+        base_link=base_link,
+        joint_matches=joint_matches,
+        smpl_pose_modifier=smpl_pose_modifier,
+        asset_file=asset_file,
+    )
+
+
 def g1_mapping():
     #### Config for extension
     extend_config = [
@@ -150,6 +265,9 @@ def smplx_with_limits_mapping():
 def get_config(humanoid_type: str):
     if humanoid_type == "g1":
         return g1_mapping()
+    elif humanoid_type == "t1":
+        # return t1_mapping()
+        return t1_mapping_with_extend_config()
     elif humanoid_type == "smplx_humanoid_with_limits":
         return smplx_with_limits_mapping()
     else:

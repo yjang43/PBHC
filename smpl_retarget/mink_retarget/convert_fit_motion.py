@@ -45,18 +45,34 @@ def foot_detect(positions, thres=0.002):
     feet_r = np.max(feet_r, axis=1, keepdims=True)
     return feet_l, feet_r
 
-def count_pose_aa(motion):
-    dof = motion['dof']
-    root_qua = motion['root_rot']
-    dof_new = np.concatenate((dof[:, :19], dof[:, 22:26]), axis=1)
-    root_aa = sRot.from_quat(root_qua).as_rotvec()
+def count_pose_aa(motion, robot_type="g1"):
+    if robot_type == "g1":
+        # NOTE (yjang43): 29 DoF to 23 DoF G1 handling. Removing wrist joints.
+        dof = motion['dof']
+        root_qua = motion['root_rot']
+        dof_new = np.concatenate((dof[:, :19], dof[:, 22:26]), axis=1)
+        root_aa = sRot.from_quat(root_qua).as_rotvec()
 
-    dof_axis = np.load('../description/robots/g1/dof_axis.npy', allow_pickle=True)
-    dof_axis = dof_axis.astype(np.float32)
+        dof_axis = np.load('../description/robots/g1/dof_axis.npy', allow_pickle=True)
+        dof_axis = dof_axis.astype(np.float32)
 
-    pose_aa = np.concatenate(
-        (np.expand_dims(root_aa, axis=1), dof_axis * np.expand_dims(dof_new, axis=2), np.zeros((dof_new.shape[0], 3, 3))),
-        axis=1).astype(np.float32)
+        pose_aa = np.concatenate(
+            (np.expand_dims(root_aa, axis=1), dof_axis * np.expand_dims(dof_new, axis=2), np.zeros((dof_new.shape[0], 3, 3))),
+            axis=1).astype(np.float32)
+
+    elif robot_type == "t1":
+        dof = motion['dof']
+        root_qua = motion['root_rot']
+        dof_new = dof
+        root_aa = sRot.from_quat(root_qua).as_rotvec()
+
+        dof_axis = np.load('../description/robots/t1/dof_axis.npy', allow_pickle=True)
+        dof_axis = dof_axis.astype(np.float32)
+
+        pose_aa = np.concatenate(
+            (np.expand_dims(root_aa, axis=1), dof_axis * np.expand_dims(dof_new, axis=2), np.zeros((dof_new.shape[0], 3, 3))),
+            axis=1).astype(np.float32)
+
     
     return pose_aa,dof_new
 
@@ -84,6 +100,7 @@ def correct_motion(contact_mask, verts, trans):
 def main(
     amass_root_dir: Path,
     robot_type: str = 'g1',
+    # robot_type: str = 't1',
     humanoid_type: str = "smpl",
     force_remake: bool = False,
     force_neutral_body: bool = True,
@@ -95,6 +112,10 @@ def main(
     if robot_type is None:
         robot_type = humanoid_type
     elif robot_type in ["h1", "g1"]:
+        assert (
+            force_retarget
+        ), f"Data is either SMPL or SMPL-X. The {robot_type} robot must use the retargeting pipeline."
+    elif robot_type == "t1":
         assert (
             force_retarget
         ), f"Data is either SMPL or SMPL-X. The {robot_type} robot must use the retargeting pipeline."
@@ -386,8 +407,13 @@ def main(
                     else:
                         correct_global_trans = global_trans[::skip]
 
+                    # global_trans: (T, 24, 3)
+                    # NOTE: This is where retargeting happens.
                     new_sk_motion = retarget_fit_motion(
-                        correct_global_trans, pose_quat_global[::skip], fps, robot_type=robot_type, render=False) 
+                        # correct_global_trans, pose_quat_global[::skip], fps, robot_type=robot_type, render=False) 
+                        correct_global_trans, pose_quat_global[::skip], fps, robot_type=robot_type, render=True) 
+                    # global_trans for G1: (T, 35, 3)
+                    # dof_pos for G1: (T, 29)
 
                     print(f"Saving to {outpath}")
 
@@ -408,7 +434,7 @@ def main(
                     }
 
                     motion_data['contact_mask'] = contact_mask
-                    pose_aa,dof = count_pose_aa(motion_data)
+                    pose_aa,dof = count_pose_aa(motion_data, robot_type)
                     motion_data['pose_aa'] = pose_aa
                     motion_data['dof'] = dof
 
@@ -422,8 +448,13 @@ def main(
                     data = {filename: motion_data}
                     with open((path), 'wb') as f:
                         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+                    # NOTE (yjang43): Save in data folder as well
+                    ext_path = amass_root_dir / (str(folder_name) + "_" + robot_type + ".pkl")
+                    with open(ext_path, "wb") as f:
+                        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
                     
-                    if robot_type in ["h1", "g1"]:
+                    if robot_type in ["h1", "g1", "t1"]:
                         torch.save(new_sk_motion, str(outpath))
                     else:
                         new_sk_motion.to_file(str(outpath))

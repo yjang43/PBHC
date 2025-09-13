@@ -81,6 +81,11 @@ class Humanoid_Batch:
             for j in tree.getroot().find("worldbody").findall(".//joint")[1:]:
                 self.dof_axis.append([int(i) for i in j.attrib["axis"].split(" ")])
             self.has_freejoint = True
+        # NOTE: T1 compatibility. MCJF file contains freejoint. Same behavior as type="free".
+        elif tree.getroot().find("worldbody").findall(".//freejoint"):
+            for j in tree.getroot().find("worldbody").findall(".//joint"):
+                self.dof_axis.append([int(i) for i in j.attrib["axis"].split(" ")])
+            self.has_freejoint = True
         elif (
             not "type" in tree.getroot().find("worldbody").findall(".//joint")[0].attrib
         ):

@@ -95,15 +95,47 @@ _G1_KEYPOINT_TO_JOINT = {
     # "R_Hand": {"name": "right_rubber_hand_2", "weight": 3.0},
 }
 
+# TODO: Might need to add few links to MCJF model - wrist, toes.
+_T1_KEYPOINT_TO_JOINT = {
+    "Pelvis": {"name": "Waist", "weight": 5.0},
+    "Head": {"name": "H2", "weight": 5.0},
+    # Legs.
+    "L_Hip": {"name": "Hip_Yaw_Left", "weight": 1.0},
+    "R_Hip": {"name": "Hip_Yaw_Right", "weight": 1.0},
+    "L_Knee": {"name": "Shank_Left", "weight": 1.0},
+    "R_Knee": {"name": "Shank_Right", "weight": 1.0},
+    "L_Ankle": {"name": "Ankle_Cross_Left", "weight": 1.0},
+    "R_Ankle": {"name": "Ankle_Cross_Right", "weight": 1.0},
+    # Arms.
+    "L_Elbow": {"name": "AL3", "weight": 1.0},
+    "R_Elbow": {"name": "AR3", "weight": 1.0},
+    "L_Wrist": {"name": "left_hand_link", "weight": 1.0},
+    "R_Wrist": {"name": "right_hand_link", "weight": 1.0},
+    "L_Shoulder": {"name": "AL1", "weight": 3.0},
+    "R_Shoulder": {"name": "AR1", "weight": 3.0},
+
+    # toe
+    "L_Toe": {"name": "left_foot_link", "weight": 1.0},
+    "R_Toe": {"name": "right_foot_link", "weight": 1.0},
+    # torso
+    # "Torso": {"name": "torso_link", "weight": 3.0},
+
+    # Hands
+    # "L_Hand": {"name": "left_rubber_hand_2", "weight": 3.0},
+    # "R_Hand": {"name": "right_rubber_hand_2", "weight": 3.0},
+}
+
 _KEYPOINT_TO_JOINT_MAP = {
     "h1": _H1_KEYPOINT_TO_JOINT,
     "g1": _G1_KEYPOINT_TO_JOINT,
+    "t1": _T1_KEYPOINT_TO_JOINT,
 }
 
 _RESCALE_FACTOR = {
     "h1": np.array([1.0, 1.0, 1.1]),
     # "g1": np.array([0.75, 1.0, 0.8]),
     "g1": np.array([1.0, 1.0, 1.0]),
+    "t1": np.array([1.0, 1.0, 1.0]),
 }
 
 _OFFSET = {
@@ -227,6 +259,8 @@ def construct_model(robot_name: str, keypoint_names: Sequence[str]):
     elif robot_name == "g1":
         humanoid_mjcf = mjcf.from_path("../description/robots/g1/g1_29dof_rev_1_0_with_toe.xml")
         # humanoid_mjcf = mjcf.from_path("protomotions/data/assets/mjcf/g1.xml")
+    elif robot_name == "t1":
+        humanoid_mjcf = mjcf.from_path("../description/robots/t1/T1_Serial.mjcf")
     else:
         raise ValueError(f"Unknown robot name: {robot_name}")
     humanoid_mjcf.worldbody.add(
@@ -636,7 +670,7 @@ def retarget_fit_motion(global_trans, pose_quat_global, mo_fps, robot_type: str,
     retargeted_trans = np.stack(retargeted_trans)
 
     # Create skeleton motion
-    if robot_type in ["h1", "g1"]:
+    if robot_type in ["h1", "g1", "t1"]:
         return create_robot_motion(
             retargeted_poses, retargeted_trans, global_translations, fps, robot_type
         )
