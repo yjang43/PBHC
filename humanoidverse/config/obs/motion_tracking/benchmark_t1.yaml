@@ -13,8 +13,8 @@ obs:
       dof_vel,
       actions,
       ref_motion_phase,
-      dif_local_rigid_body_pos,
-      local_ref_rigid_body_pos,
+      # dif_local_rigid_body_pos,
+      # local_ref_rigid_body_pos,
       history_actor
     ]
 
@@ -26,8 +26,8 @@ obs:
       dof_vel,
       actions,
       ref_motion_phase,
-      dif_local_rigid_body_pos,
-      local_ref_rigid_body_pos,
+      # dif_local_rigid_body_pos,
+      # local_ref_rigid_body_pos,
       dr_base_com,
       dr_link_mass,
       dr_kp,
