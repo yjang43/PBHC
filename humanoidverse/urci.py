@@ -1,7 +1,7 @@
 # Unified Robot Control Interface for HumanoidVerse
 # Weiji Xie @ 2025.03.04
 
-REAL       :bool    = False
+REAL       :bool    = True
 
 
 import os
@@ -72,7 +72,9 @@ def main(override_config: OmegaConf):
         # simulator_type = config.simulator.config.name
         
         if simulator_type == 'real':
-            raise NotImplementedError("Real deployment is not implemented")
+            # raise NotImplementedError("Real deployment is not implemented")
+            from humanoidverse.deploy.t1 import MujocoRobot
+            RobotCls = MujocoRobot
         elif simulator_type == 'mujoco':
             from humanoidverse.deploy.mujoco import MujocoRobot
             RobotCls = MujocoRobot

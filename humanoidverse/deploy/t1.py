@@ -27,6 +27,7 @@ from description.robots.dtype import RobotExitException
 import numpy as np
 
 import threading
+from copy import deepcopy
 from booster_robotics_sdk_python import ChannelFactory, B1LowCmdPublisher, LowCmd, LowCmdType, MotorCmd, B1JointCnt, B1JointIndex
 from booster_robotics_sdk_python import (
     ChannelFactory,
@@ -37,12 +38,54 @@ from booster_robotics_sdk_python import (
     LowState,
     B1JointCnt,
     RobotMode,
+    GetModeResponse
 )
 
 
-STIFFNESS = [4] * 23
-DAMPING = [1] * 23
-
+# STIFFNESS = [
+#     10, 10,
+#     10, 10, 10, 10,
+#     10, 10, 10, 10,
+#     50,
+#     100, 100, 100,
+#     150, 40, 40,
+#     100, 100, 100,
+#     150, 40, 40
+# ]
+STIFFNESS = [
+    20, 20,
+    20, 20, 20, 20,
+    20, 20, 20, 20,
+    200,
+    200, 200, 200, 200, 50, 50,
+    200, 200, 200, 200, 50, 50
+]
+# DAMPING = [
+#     1.0, 1.0, 
+#     2.0, 2.0, 2.0, 2.0, 2.0, 
+#     2.0, 2.0, 2.0, 2.0, 2.0, 
+#     5.0, 
+#     2.0, 2.0, 2.0,
+#     4.0, 2.0, 2.0,
+#     2.0, 2.0, 2.0,
+#     4.0, 2.0, 2.0]
+DAMPING = [
+    0.2, 0.2,
+    0.5, 0.5, 0.5, 0.5,
+    0.5, 0.5, 0.5, 0.5,
+    5,
+    5, 5, 5, 5, 3, 3,
+    5, 5, 5, 5, 3, 3
+]
+DOF_NAMES = [
+    'AAHead_yaw', 'Head_pitch', 
+    'Left_Shoulder_Pitch', 'Left_Shoulder_Roll', 'Left_Elbow_Pitch', 'Left_Elbow_Yaw', 
+    'Right_Shoulder_Pitch', 'Right_Shoulder_Roll', 'Right_Elbow_Pitch', 'Right_Elbow_Yaw', 
+    'Waist', 
+    'Left_Hip_Pitch', 'Left_Hip_Roll', 'Left_Hip_Yaw', 
+    'Left_Knee_Pitch', 'Left_Ankle_Pitch', 'Left_Ankle_Roll', 
+    'Right_Hip_Pitch', 'Right_Hip_Roll', 'Right_Hip_Yaw', 
+    'Right_Knee_Pitch', 'Right_Ankle_Pitch', 'Right_Ankle_Roll']
 
 def prepare_low_cmd(low_cmd: LowCmd):
     low_cmd.cmd_type = LowCmdType.SERIAL
@@ -94,6 +137,7 @@ class MujocoRobot(URCIRobot):
 
     def _init_communication(self) -> None:
         try:
+            ChannelFactory.Instance().Init(0)
             self.low_cmd = LowCmd()
             self.low_state_subscriber = B1LowStateSubscriber(self._low_state_handler)
             self.low_cmd_publisher = B1LowCmdPublisher()
@@ -102,6 +146,9 @@ class MujocoRobot(URCIRobot):
             self.low_state_subscriber.InitChannel()
             self.low_cmd_publisher.InitChannel()
             self.client.Init()
+
+            # Change to custom mode
+            self._enter_custom_mode()
         except Exception as e:
             logger.error(f"Failed to initialize communication: {e}")
             raise
@@ -133,6 +180,15 @@ class MujocoRobot(URCIRobot):
         for i in range(B1JointCnt):
             low_cmd.motor_cmd[i].q = target_q[i]
         self.low_cmd_publisher.Write(low_cmd)
+
+    def _enter_custom_mode(self):
+        low_cmd = LowCmd()
+        prepare_low_cmd(low_cmd)
+        for i in range(B1JointCnt):
+            low_cmd.motor_cmd[i].q = self.dof_init_pose[i]
+        self.low_cmd_publisher.Write(low_cmd)
+
+        self.client.ChangeMode(RobotMode.kCustom)
         
     def _low_state_handler(self, low_state_msg: LowState):
         self.low_state_msg = low_state_msg
