@@ -272,10 +272,10 @@ robot:
       Head: 20
       Shoulder: 20
       Elbow: 20
-      Waist: 200
-      Hip: 200
+      Waist: 100
+      Hip: 100
       Ankle: 50
-      Knee: 200
+      Knee: 100
       # TODO: Get common names from joints.
       # hip_yaw: 100
       # hip_roll: 100
@@ -293,14 +293,14 @@ robot:
 
 
     damping: # [N*m/rad]  # [N*m*s/rad]
-      AAHead: 0.2
-      Head: 0.2
-      Shoulder: 0.5
-      Elbow: 0.5
-      Waist: 5.0
-      Hip: 5.0
-      Ankle: 3.0
-      Knee: 5.0
+      AAHead: 2
+      Head: 2
+      Shoulder: 2
+      Elbow: 2
+      Waist: 2.0
+      Hip: 2.0
+      Ankle: 1.0
+      Knee: 2.0
       # TODO: Likewise
       # hip_yaw: 2.0
       # hip_roll: 2.0
