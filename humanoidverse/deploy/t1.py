@@ -41,6 +41,8 @@ from booster_robotics_sdk_python import (
     GetModeResponse
 )
 
+import pickle
+
 
 # STIFFNESS = [
 #     10, 10,
@@ -87,18 +89,54 @@ DOF_NAMES = [
     'Right_Hip_Pitch', 'Right_Hip_Roll', 'Right_Hip_Yaw', 
     'Right_Knee_Pitch', 'Right_Ankle_Pitch', 'Right_Ankle_Roll']
 
-def prepare_low_cmd(low_cmd: LowCmd):
+UPPER_BODY_MASK = [
+    True, True,
+    True, True, True, True,
+    True, True, True, True,
+    # True,
+    False,
+    False, False, False,
+    False, False, False,
+    False, False, False,
+    False, False, False,
+]
+
+LOWER_BODY_MASK = [
+    False, False,
+    False, False, False, False,
+    False, False, False, False,
+    # False,
+    True,
+    True, True, True,
+    True, True, True,
+    True, True, True,
+    True, True, True,
+]
+
+def prepare_low_cmd(
+    low_cmd: LowCmd,
+    *,
+    q=None,
+    dq=None,
+    tau=None,
+    stiffness=None,
+    damping=None
+):
     low_cmd.cmd_type = LowCmdType.SERIAL
     motorCmds = [MotorCmd() for _ in range(B1JointCnt)]
     low_cmd.motor_cmd = motorCmds
 
     for i in range(B1JointCnt):
-        low_cmd.motor_cmd[i].q = 0.0
-        low_cmd.motor_cmd[i].dq = 0.0
-        low_cmd.motor_cmd[i].tau = 0.0
-        low_cmd.motor_cmd[i].kp = STIFFNESS[i]
-        low_cmd.motor_cmd[i].kd = DAMPING[i]
-
+        if q is not None:
+            low_cmd.motor_cmd[i].q = q[i]
+        if dq is not None:
+            low_cmd.motor_cmd[i].dq = dq[i]
+        if tau is not None:
+            low_cmd.motor_cmd[i].tau = tau[i]
+        if stiffness is not None:
+            low_cmd.motor_cmd[i].kp = stiffness[i]
+        if damping is not None:
+            low_cmd.motor_cmd[i].kd = damping[i]
 
 
 def rotate_vector_inverse_rpy(roll, pitch, yaw, vector):
@@ -121,6 +159,22 @@ def rotate_vector_inverse_rpy(roll, pitch, yaw, vector):
 
 
 class MujocoRobot(URCIRobot):
+    high_damping = [
+        0.2, 0.2,
+        5, 5, 5, 5,
+        5, 5, 5, 5,
+        10,
+        10, 10, 10, 10, 6, 6,
+        10, 10, 10, 10, 6, 6
+    ]
+    low_stiffness = [
+        10, 10,
+        10, 10, 10, 10,
+        10, 10, 10, 10,
+        200,
+        150, 150, 150, 150, 50, 50,
+        150, 150, 150, 150, 50, 50
+    ]
     REAL=True
     
     def __init__(self, cfg):
@@ -130,8 +184,10 @@ class MujocoRobot(URCIRobot):
         self.cnt = -1    # Update compute heavy states when cnt < timer
         
         self._init_communication()
-        self.publish_runner = None
-        self.running = True
+        self._init_custom_mode()
+
+        self.act_log = []
+        self.obs_log = []
 
         self.Reset()
 
@@ -147,15 +203,58 @@ class MujocoRobot(URCIRobot):
             self.low_cmd_publisher.InitChannel()
             self.client.Init()
 
-            # Change to custom mode
-            self._enter_custom_mode()
         except Exception as e:
             logger.error(f"Failed to initialize communication: {e}")
             raise
 
+    def _init_custom_mode(self):
+        prepare_low_cmd(
+            self.low_cmd,
+            q=self.dof_init_pose,
+            stiffness=self.low_stiffness,
+            damping=self.high_damping
+        )
+        self.low_cmd_publisher.Write(self.low_cmd)
+
+        self.client.ChangeMode(RobotMode.kCustom)
+
+        # Wait until near target_q.
+        self._get_state()
+        while np.linalg.norm(self.q - self.dof_init_pose) > 1.0:
+            time.sleep(0.01)
+            self._get_state()
+
+    def Reset(self):
+        super().Reset()
+        self.act[:] = self.q
+
+
     def _reset(self):
-        # default_joint_angles offset is applied by ApplyAction.
-        self.ApplyAction(np.zeros(self.num_dofs))
+        # def routing must be called prior to _reset. Otherwise do nothing.
+        # self.motion_lib is set at def SetObsCfg. Manually set motion_lib.
+        if not self.motion_libs:
+            return
+        else:
+            ref_pid = 0 if self._ref_pid == -2 else self._ref_pid
+            self.motion_lib = self.motion_libs[ref_pid]
+
+        # High damp to move joint safely.
+        self.motion_res = self._kick_motion_res()
+        prepare_low_cmd(
+            self.low_cmd,
+            q=self.motion_res["dof_pos"][0].numpy(),
+            dq=self.motion_res["dof_vel"][0].numpy(),
+            stiffness=self.low_stiffness,
+            damping=self.high_damping
+        )
+        self.low_cmd_publisher.Write(self.low_cmd)
+
+
+        # Wait until near target_q.
+        self._get_state()
+        while np.linalg.norm(self.q - self.motion_res["dof_pos"][0].numpy()) > 1.0:
+            time.sleep(0.01)
+            self._get_state()
 
     def _get_state(self):
         low_state_msg = self.low_state_msg
@@ -175,20 +274,35 @@ class MujocoRobot(URCIRobot):
         self.omega = np.array(low_state_msg.imu_state.gyro)
 
     def _apply_action(self, target_q):
-        low_cmd = LowCmd()
-        prepare_low_cmd(low_cmd)
-        for i in range(B1JointCnt):
-            low_cmd.motor_cmd[i].q = target_q[i]
-        self.low_cmd_publisher.Write(low_cmd)
 
-    def _enter_custom_mode(self):
-        low_cmd = LowCmd()
-        prepare_low_cmd(low_cmd)
-        for i in range(B1JointCnt):
-            low_cmd.motor_cmd[i].q = self.dof_init_pose[i]
-        self.low_cmd_publisher.Write(low_cmd)
+        stiffness = []
+        damping = []
+        for dof_name in self.dof_names:
+            for name in self.cfg.robot.control.stiffness:
+                if name in dof_name:
+                    stiffness.append(self.cfg.robot.control.stiffness[name])
+                    damping.append(self.cfg.robot.control.damping[name])
 
-        self.client.ChangeMode(RobotMode.kCustom)
+        # masked_target_q = target_q
+        # masked_target_q *= np.array(UPPER_BODY_MASK)
+        # masked_target_q += self.motion_res["dof_pos"][0].numpy() * np.array(LOWER_BODY_MASK)
+
+        prepare_low_cmd(
+            self.low_cmd,
+            q=target_q,
+            # q=masked_target_q,
+            stiffness=stiffness,
+            damping=damping,
+            # damping=self.high_damping,  # NOTE: For debug purpose.
+            # stiffness=self.low_stiffness
+        )
+        
+        self.low_cmd_publisher.Write(self.low_cmd)
+        
+        # self.act_log.append(target_q)
+        # import pickle
+        # with open("tmp_dump_act.pkl", "wb") as f:
+        #     pickle.dump(self.act_log, f)
         
     def _low_state_handler(self, low_state_msg: LowState):
         self.low_state_msg = low_state_msg
@@ -200,9 +314,161 @@ class MujocoRobot(URCIRobot):
         if hasattr(self, "low_state_subscriber"):
             self.low_state_subscriber.CloseChannel()
 
+    def _get_motion_to_save_np(self)->Tuple[float, Dict[str, np.ndarray]]:
+        
+        from scipy.spatial.transform import Rotation as sRot
+        
+        motion_time = (self.timer) * self.dt 
+
+        # Odometer
+        root_trans = np.zeros(3).astype(np.double)
+        root_lin_vel = np.zeros(3).astype(np.double)
+        root_rot = self.quat # XYZW
+        root_rot_vec = np.array(sRot.from_quat(root_rot).as_rotvec(), dtype=np.float32) # type: ignore
+        dof = self.q
+        # T, num_env, J, 3
+        # print(self._motion_lib.mesh_parsers.dof_axis)
+        pose_aa = np.concatenate([root_rot_vec[..., None, :], 
+                                np.array(self._dof_axis * dof[..., None]), 
+                                np.zeros((self.num_augment_joint, 3))], axis = 0) # type: ignore
+        
+        return motion_time, {
+            'root_trans_offset': (root_trans).copy(),
+            'pose_aa': pose_aa,
+            'dof': (dof).copy(),
+            'root_rot': (root_rot).copy(), # 统一save xyzw
+            'actor_obs': (self.obs_buf_dict['actor_obs']),
+            'action': (self.act).copy(),
+            'terminate': np.zeros((1,)),
+            'root_lin_vel': (root_lin_vel).copy(),
+            'root_ang_vel': (self.omega).copy(),
+            'dof_vel': (self.dq).copy(),
+            
+            # 'clock_time': (np.array([time.time()])),
+            # 'tau': (self.data.ctrl).copy(),
+            # 'cmd': (self.cmd).copy()
+        }
+        
+    _get_motion_to_save = _get_motion_to_save_np
 
 
-if __name__ == "__main__":
-    robot = MujocoRobot(cfg)
-    robot.Reset()
-    robot.ApplyAction(np.zeros(robot.num_dofs))
+    def ApplyAction(self, action):
+        with open("tmp_dump_act.pkl", "wb") as f:
+            pickle.dump(self.act_log, f)
+        return super().ApplyAction(action)
+
+    def Obs(self)->Dict[str, np.ndarray]:
+        obs = super().Obs()
+        with open("tmp_dump_obs.pkl", "wb") as f:
+            pickle.dump(self.obs_log, f)
+        return obs
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.cleanup()
+
+
+    def routing(self, cfg_policies):
+        """
+            Usage: Input a list of Policy, and the robot can switch between them.
+            
+            - Policies are indexed by integers (Pid), 0 to len(cfg_policies)-1.
+            - special pid: 
+                - -2: Reset the robot.
+                - 0: Default policy, should be stationary. 
+                    - The Robot will switch to this policy once the motion tracking is Done or being Reset.
+            - Switching Mechanism:
+                - The instance (MuJoCo or Real) should implement the Pid control logic. It can be changed at any time.
+                - When the instance want to Reset the robot, it should set the pid to -2.
+        """
+        self._pid_size = len(cfg_policies)
+        self._make_motionlib(cfg_policies)
+        self._check_init()
+        self.cmd[3]=self.rpy[2]
+        cur_pid = -1
+
+        try: 
+
+            obs_list = []
+            act_list = []
+
+            while True:
+                t1 = time.time()
+                
+                if cur_pid != self._ref_pid or self._ref_pid == -2:
+                    if self._ref_pid == -2:
+                        self.Reset()
+                        self._ref_pid = 0
+                        t1 = time.time()
+                        ...
+                    
+                    
+                    self._ref_pid %= self._pid_size
+                    assert self._ref_pid >= 0 and self._ref_pid < self._pid_size, f"Invalid policy id: {self._ref_pid}"
+                    self.TrySaveMotionFile(pid=cur_pid)       
+                    logger.info(f"Switch to the policy {self._ref_pid}")
+
+                    
+                    cur_pid = self._ref_pid
+                    self.SetObsCfg(cfg_policies[cur_pid][0])
+                    policy_fn = cfg_policies[cur_pid][1]
+                    if self.SWITCH_EMA:
+                        self.old_act = self.act.copy()
+                    # print('Debug: ',self.Obs()['actor_obs'])
+                    # breakpoint()
+
+                    
+                    # breakpoint()
+                
+                self.UpdateObs()
+                
+                action = policy_fn(self.Obs())[0]
+                
+                if self.BYPASS_ACT: action = np.zeros_like(action)
+                
+                if self.SWITCH_EMA and self.timer <10:
+                    self.old_act = self.old_act * 0.9 + action * 0.1
+                    action = self.old_act
+                    
+                
+                self.ApplyAction(action)
+                
+                obs_list.append(self.obs_buf_dict_raw)
+                act_list.append(action)
+
+                # if self.timer > 100:
+                #     import pickle
+                #     with open('real_obs_list.pkl', 'wb') as f:
+                #         pickle.dump(obs_list, f)
+                #     with open('real_act_list.pkl', 'wb') as f:
+                #         pickle.dump(act_list, f)
+                #     break
+                
+                self.TrySaveMotionStep()
+                
+                if self.motion_len > 0 and self.ref_motion_phase > 1.0:
+                    # self.Reset()
+                    if self._ref_pid == 0:
+                        self._ref_pid = -2
+                    else:
+                        self._ref_pid = 0
+                    self.TrySaveMotionFile(pid=cur_pid)
+                    logger.info("Motion End. Switch to the Default Policy")
+                    break
+                t2 = time.time()
+                
+                # print(f"t2-t1 = {(t2-t1)*1e3} ms")
+                if self.REAL:
+                # if True:
+                    # print(f"t2-t1 = {(t2-t1)*1e3} ms")
+                    remain_dt = self.dt - (t2-t1)
+                    if remain_dt > 0:
+                        time.sleep(remain_dt)
+                    else:
+                        logger.warning(f"Warning! delay = {t2-t1} longer than policy_dt = {self.dt} , skip sleeping")
+        except RobotExitException as e:
+            self.TrySaveMotionFile(pid=cur_pid)
+            self.cleanup()
+            raise e
