@@ -100,7 +100,7 @@ class URCIRobot:
         self._pid_size = len(cfg_policies)
         self._make_motionlib(cfg_policies)
         self._check_init()
-        self.cmd[3]=self.rpy[2]
+        # self.cmd[3]=self.rpy[2]
         cur_pid = -1
 
         try: 
@@ -183,11 +183,11 @@ class URCIRobot:
         self.act[:] = 0
         self.history_handler.reset([0])
         self.timer: int = 0
-        self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
-        self.cmd[3]=self.rpy[2]
+        # self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
+        # self.cmd[3]=self.rpy[2]
         
         
-        self.UpdateObs()
+        # self.UpdateObs()
         
     def _apply_action(self, target_q):
         raise NotImplementedError("Not implemented")
@@ -214,13 +214,13 @@ class URCIRobot:
         self._get_state()
         
         
-        if self.heading_cmd:
-            self.cmd[2] = np.clip(0.5*wrap_to_pi_float(self.cmd[3] - self.rpy[2]), -1., 1.)
+        # if self.heading_cmd:
+        #     self.cmd[2] = np.clip(0.5*wrap_to_pi_float(self.cmd[3] - self.rpy[2]), -1., 1.)
             
         if self.is_motion_tracking:
-            self.motion_time = (self.timer) * self.dt 
+            self.motion_time = (self.timer + 1) * self.dt 
             self.ref_motion_phase = self.motion_time / self.motion_len
-        print("cmd: ", self.cmd,end='\r\b')
+        # print("cmd: ", self.cmd,end='\r\b')
     
 
     def SetObsCfg(self, obs_cfg: ObsCfg):
@@ -237,12 +237,12 @@ class URCIRobot:
         # self.history_handler.reset([0])
         self.motion_lib = self.motion_libs[self._ref_pid]
         self.timer: int = 0
-        self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
-        self.cmd[3]=self.rpy[2]
+        # self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
+        # self.cmd[3]=self.rpy[2]
         self.ref_init_yaw[0] = self.rpy[2]
-        if 'ref_motion_phase' in self.history_handler.history.keys():
-            self.ref_motion_phase = 0.
-            self.history_handler.history['ref_motion_phase']*=0
+        # if 'ref_motion_phase' in self.history_handler.history.keys():
+        #     self.ref_motion_phase = 0.
+        #     self.history_handler.history['ref_motion_phase']*=0
         self.KickMotionLib()
         # self.UpdateObsWoHistory() # Recompute obs with new _obs_cfg_obs
         ...
@@ -297,6 +297,45 @@ class URCIRobot:
         
         for key in self.history_handler.history.keys():
             self.history_handler.add(key, self.hist_obs_dict[key])
+
+    def UpdateObsWithHistory(self):
+        """ Computes observations
+        """
+        # super().compute_observations()
+        self.obs_buf_dict_raw = {}
+        self.hist_obs_dict = {}
+
+        # print("noise_extra_scale", noise_extra_scale)
+        # breakpoint()
+        # compute Algo observations
+        for obs_key, obs_config in self.cfg.obs.obs_dict.items():
+            if not obs_key=='actor_obs': continue
+            self.obs_buf_dict_raw[obs_key] = dict()
+
+            parse_observation(self, obs_config, self.obs_buf_dict_raw[obs_key], self.cfg.obs.obs_scales, self.cfg.obs.noise_scales, 0)
+        
+        # Compute history observations
+        history_obs_list = self.history_handler.history.keys()
+        parse_observation(self, history_obs_list, self.hist_obs_dict, self.cfg.obs.obs_scales, self.cfg.obs.noise_scales, 0)
+
+        self.obs_buf_dict = dict()
+        
+        for obs_key, obs_config in self.cfg.obs.obs_dict.items():
+            if not obs_key=='actor_obs': continue
+            obs_keys = sorted(obs_config)
+            # print("obs_keys", obs_keys)            
+            self.obs_buf_dict[obs_key] = torch.cat([self.obs_buf_dict_raw[obs_key][key] for key in obs_keys], dim=-1)
+
+        # return clipped obs, clipped states (None), rewards, dones and infos
+        clip_obs = self.clip_observations
+        for obs_key, obs_val in self.obs_buf_dict.items():
+            self.obs_buf_dict[obs_key] = torch.clip(obs_val, -clip_obs, clip_obs)
+
+        print("urcibot.py")
+        # breakpoint()
+        for key in self.history_handler.history.keys():
+            self.history_handler.add(key, self.hist_obs_dict[key])
+
     
     _kick_motion_res_counter = -1
     _kick_motion_res_buffer: Optional[Dict[str, torch.Tensor]] = None
@@ -355,9 +394,10 @@ class URCIRobot:
 
     def UpdateObs(self):
         self.GetState()
-        self.KickMotionLib()
-        self.UpdateObsWoHistory()
-        self.UpdateObsForHistory()
+        # self.KickMotionLib()
+        # self.UpdateObsWoHistory()
+        # self.UpdateObsForHistory()
+        self.UpdateObsWithHistory()
         
     def _check_init(self):
         assert self.dt is not None, "dt is not set"
@@ -412,7 +452,7 @@ class URCIRobot:
                 raise ValueError(f"PD gain of joint {name} were not defined. Should be defined in the yaml file.")
         
     def _make_buffer(self):
-        self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
+        # self.cmd: np.ndarray = np.array(self.cfg.deploy.defcmd)
         
         self.q = np.zeros(self.num_dofs)
         self.dq = np.zeros(self.num_dofs)
@@ -544,10 +584,12 @@ class URCIRobot:
     
     ######################### Observations #########################
     def _get_obs_command_lin_vel(self):
-        return np2torch(self.cmd[:2])
+        # return np2torch(self.cmd[:2])
+        return torch.zeros(2)
     
     def _get_obs_command_ang_vel(self):
-        return np2torch(self.cmd[2:3])
+        # return np2torch(self.cmd[2:3])
+        return torch.zeros(1)
     
     def _get_obs_actions(self,):
         return np2torch(self.act)
