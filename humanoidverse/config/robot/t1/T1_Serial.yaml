@@ -268,7 +268,6 @@ robot:
     control_type: P
     # PD Drive parameters:
     stiffness: # [N*m/rad]
-      AAHead: 20
       Head: 20
       Shoulder: 20
       Elbow: 20
@@ -293,7 +292,6 @@ robot:
 
 
     damping: # [N*m/rad]  # [N*m*s/rad]
-      AAHead: 2
       Head: 2
       Shoulder: 2
       Elbow: 2
